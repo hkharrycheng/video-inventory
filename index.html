@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Inventory</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='5' fill='%2358a6ff'/><path d='M7 8l10 4-10 4z' fill='%230d1117'/></svg>">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  min-height: 100vh;
+}
+.header {
+  background: linear-gradient(135deg, #1a2332 0%, #0d1117 100%);
+  padding: 16px 20px;
+  border-bottom: 1px solid #30363d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+.header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(90deg, #58a6ff, #bc8cff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.header-sub { font-size: 12px; color: #8b949e; }
+/* 底部 TAB（手機 FOOTER 模式） */
+.bottom-tabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: rgba(13, 17, 23, 0.96);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  z-index: 300;
+  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+}
+.bottom-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+}
+.bottom-tab .tab-icon { font-size: 19px; line-height: 1.1; }
+.bottom-tab.active { color: #58a6ff; }
+.bottom-tab.active .tab-icon { transform: scale(1.08); }
+.content { padding: 20px 20px 84px; }
+.page { display: none; }
+.page.active { display: block; }
+.search-box {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.search-box input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #e6edf3;
+  font-size: 16px;
+  font-family: inherit;
+}
+.search-box svg { width: 18px; height: 18px; flex-shrink: 0; }
+.cat-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.cat-btn {
+  padding: 5px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #30363d;
+  background: transparent;
+  color: #8b949e;
+  font-family: inherit;
+}
+.cat-btn.active {
+  background: linear-gradient(90deg, #58a6ff, #bc8cff);
+  border-color: transparent;
+  color: #000;
+  font-weight: bold;
+}
+.result-meta { font-size: 12px; color: #8b949e; margin-bottom: 10px; }
+.vgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 640px) { .vgrid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 960px) { .vgrid { grid-template-columns: repeat(4, 1fr); } }
+.vcard {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+.vcard:active { transform: scale(0.98); }
+.vposter {
+  width: 100%;
+  aspect-ratio: 3/4;
+  background: #21262d center/cover no-repeat;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #484f58;
+  font-size: 28px;
+}
+.vposter img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vbadges {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.vbadge {
+  padding: 2px 7px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(13, 17, 23, 0.85);
+  color: #fff;
+}
+.vbadge.grade { background: rgba(188, 140, 255, 0.9); color: #0d1117; }
+.vbadge.dbG { background: rgba(63, 185, 80, 0.9); color: #0d1117; }
+.vbadge.dbGW { background: rgba(88, 166, 255, 0.9); color: #0d1117; }
+.vbadge.dbY { background: rgba(255, 179, 0, 0.9); color: #0d1117; }
+.vbadge.dbX { background: rgba(255, 107, 107, 0.9); color: #0d1117; }
+.vbadge.dbN { background: rgba(139, 148, 158, 0.9); color: #0d1117; }
+.vbody { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.vtitle {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vmeta { font-size: 11px; color: #8b949e; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.vmeta .dot { opacity: 0.6; }
+.vgpa { font-size: 13px; font-weight: 700; color: #58a6ff; }
+.vchars { font-size: 11px; color: #8b949e; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.empty { text-align: center; color: #8b949e; padding: 40px 0; font-size: 14px; }
+/* Detail overlay */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 17, 23, 0.96);
+  z-index: 400;
+  overflow-y: auto;
+  padding: 20px 20px 90px;
+  display: none;
+}
+.overlay.open { display: block; }
+.overlay-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.close-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid #30363d;
+  background: #161b22;
+  color: #e6edf3;
+  font-size: 17px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+.det-hero { display: flex; gap: 14px; margin-bottom: 16px; }
+.det-poster {
+  width: 120px;
+  height: 160px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: #21262d center/cover no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #484f58;
+  font-size: 30px;
+  overflow: hidden;
+}
+.det-poster img { width: 100%; height: 100%; object-fit: cover; }
+.det-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.det-title { font-size: 17px; font-weight: 700; line-height: 1.35; }
+.det-sub { font-size: 12px; color: #8b949e; }
+.det-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.det-sec { margin-top: 12px; }
+.det-sec h3 { font-size: 13px; color: #8b949e; margin-bottom: 8px; font-weight: 600; }
+.det-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 14px;
+  font-size: 13px;
+}
+.det-grid .k { color: #8b949e; }
+.det-grid .v { color: #e6edf3; word-break: break-all; }
+.char-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid #21262d;
+  font-size: 13px;
+}
+.char-row:last-child { border-bottom: none; }
+.char-name { font-weight: 600; }
+.char-role { color: #58a6ff; font-size: 12px; margin-left: 6px; }
+.char-actors { color: #8b949e; font-size: 12px; text-align: right; }
+.det-links { display: flex; flex-direction: column; gap: 6px; }
+.det-links a {
+  color: #58a6ff;
+  font-size: 13px;
+  text-decoration: none;
+  word-break: break-all;
+}
+/* Downloads */
+.dl-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.dl-poster {
+  width: 66px;
+  height: 88px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: #21262d center/cover no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #484f58;
+  font-size: 20px;
+  overflow: hidden;
+}
+.dl-poster img { width: 100%; height: 100%; object-fit: cover; }
+.dl-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dl-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dl-name { font-size: 14px; font-weight: 600; }
+.dl-tier {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+.tier1 { background: rgba(188, 140, 255, 0.9); color: #0d1117; }
+.tier2 { background: rgba(88, 166, 255, 0.9); color: #0d1117; }
+.tier3 { background: rgba(139, 148, 158, 0.8); color: #0d1117; }
+.dl-bar {
+  height: 8px;
+  background: #21262d;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.dl-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #58a6ff, #bc8cff);
+}
+.dl-stat { display: flex; justify-content: space-between; font-size: 11px; color: #8b949e; }
+.dl-note { font-size: 11px; color: #8b949e; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dl-links { display: flex; gap: 6px; margin-top: 2px; flex-wrap: wrap; }
+.dl-links a {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+  color: #58a6ff;
+  text-decoration: none;
+}
+.dl-st {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.st-doing { background: rgba(88, 166, 255, 0.18); color: #58a6ff; }
+.st-done { background: rgba(63, 185, 80, 0.18); color: #3fb950; }
+.st-drop { background: rgba(139, 148, 158, 0.18); color: #8b949e; }
+/* News */
+.filter-bar { display: flex; gap: 6px; padding: 0 0 12px; overflow-x: auto; flex-wrap: wrap; }
+.filter-btn {
+  padding: 5px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #30363d;
+  background: transparent;
+  color: #8b949e;
+  font-family: inherit;
+}
+.filter-btn.active {
+  background: linear-gradient(90deg, #58a6ff, #bc8cff);
+  border-color: transparent;
+  color: #000;
+  font-weight: bold;
+}
+.news-list { display: flex; flex-direction: column; gap: 10px; }
+.news-card {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s;
+}
+.news-card:active { transform: scale(0.99); }
+.news-thumb {
+  width: 88px;
+  height: 60px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: #21262d center/cover no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  overflow: hidden;
+}
+.news-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.news-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.news-title { font-size: 13px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.news-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8b949e; }
+.news-badge { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; background: rgba(88, 166, 255, 0.18); color: #58a6ff; }
+.news-sum { font-size: 11px; color: #8b949e; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.news-stamp { font-size: 10px; color: #484f58; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<header class="header">
+  <h1>Video Inventory</h1>
+  <div class="header-sub" id="updatedLabel"></div>
+</header>
+
+<div class="content">
+  <!-- ===== 頁面 1：Video Search ===== -->
+  <div class="page active" id="page-search">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="searchInput" type="text" placeholder="搜尋影片／動畫／劇集名稱…" autocomplete="off">
+    </div>
+    <div class="cat-bar" id="catBar"></div>
+    <div class="result-meta" id="resultMeta"></div>
+    <div class="vgrid" id="vgrid"></div>
+  </div>
+
+  <!-- ===== 頁面 2：下載進度 ===== -->
+  <div class="page" id="page-dl">
+    <div class="result-meta" id="dlMeta"></div>
+    <div id="dlList"></div>
+  </div>
+
+  <!-- ===== 頁面 3：J11 新聞 ===== -->
+  <div class="page" id="page-news">
+    <div class="filter-bar" id="newsFilter"></div>
+    <div class="news-list" id="newsList"></div>
+  </div>
+</div>
+
+<div class="overlay" id="detailOverlay">
+  <div class="overlay-head">
+    <button class="close-btn" id="closeDetail">&times;</button>
+    <span style="font-size:14px;color:#8b949e;">影片詳細資料</span>
+  </div>
+  <div id="detailBody"></div>
+</div>
+
+<nav class="bottom-tabs">
+  <button class="bottom-tab active" data-tab="search"><span class="tab-icon">&#128269;</span>搜尋</button>
+  <button class="bottom-tab" data-tab="dl"><span class="tab-icon">&#11015;&#65039;</span>下載中</button>
+  <button class="bottom-tab" data-tab="news"><span class="tab-icon">&#128240;</span>新聞</button>
+</nav>
+
+<script>
+// ===== 數據載入 =====
+const state = { videos: [], downloads: [], news: [], cat: '', q: '', ncat: '' };
+const $ = (s) => document.querySelector(s);
+
+function loadJSON(url) {
+  return fetch(url, { cache: 'no-store' }).then(r => r.json()).catch(() => null);
+}
+
+Promise.all([loadJSON('videos.json'), loadJSON('downloads.json'), loadJSON('news-cache.json')]).then(([v, d, n]) => {
+  state.videos = (v && v.videos) || [];
+  state.downloads = (d && d.downloads) || [];
+  state.news = (n && n.articles) || [];
+  $('#updatedLabel').textContent = '影片 ' + state.videos.length + ' 部';
+  buildCats();
+  renderVideos();
+  renderDl();
+  renderNews();
+}).catch(e => {
+  $('#updatedLabel').textContent = '載入失敗';
+  $('#vgrid').innerHTML = '<div class="empty">無法載入數據（請確認 JSON 已部署）</div>';
+});
+
+// ===== Tab 切換 =====
+document.querySelectorAll('.bottom-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.bottom-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    $('#page-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'dl') renderDl();
+    if (btn.dataset.tab === 'news') renderNews();
+  });
+});
+
+// ===== Video Search =====
+const CATS = ['Animation', 'Drama', 'Movie', 'Advertisement', 'Information'];
+function buildCats() {
+  const counts = {};
+  state.videos.forEach(v => { if (v.cat) counts[v.cat] = (counts[v.cat] || 0) + 1; });
+  const bar = $('#catBar');
+  bar.innerHTML = '';
+  const all = document.createElement('button');
+  all.className = 'cat-btn active';
+  all.textContent = '全部 (' + state.videos.length + ')';
+  all.onclick = () => { state.cat = ''; resetCats(all); renderVideos(); };
+  bar.appendChild(all);
+  CATS.forEach(c => {
+    const n = counts[c] || 0;
+    if (!n) return;
+    const b = document.createElement('button');
+    b.className = 'cat-btn';
+    b.textContent = c + ' (' + n + ')';
+    b.dataset.cat = c;
+    b.onclick = () => { state.cat = c; resetCats(b); renderVideos(); };
+    bar.appendChild(b);
+  });
+}
+function resetCats(active) {
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  active.classList.add('active');
+}
+
+function dbClass(db) {
+  return { 'G': 'dbG', 'GW': 'dbGW', 'Y': 'dbY', 'Xunlei': 'dbX', 'N': 'dbN' }[db] || 'dbN';
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function charsText(v) {
+  if (!v.chars || !v.chars.length) return '';
+  return v.chars.map(c => c.n + (c.a && c.a.length ? '（' + c.a.map(a => a.n).join('、') + '）' : '')).join('、');
+}
+function filtered() {
+  const q = state.q.trim().toLowerCase();
+  return state.videos.filter(v => {
+    if (state.cat && v.cat !== state.cat) return false;
+    if (!q) return true;
+    const hay = [v.t, v.t2, v.ot, (v.chars || []).map(c => c.n).join(' ')].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+}
+function renderVideos() {
+  const q = state.q.trim();
+  const list = filtered();
+  $('#resultMeta').textContent = q ? ('「' + q + '」共 ' + list.length + ' 筆結果') : ('全部影片 ' + list.length + ' 部');
+  const grid = $('#vgrid');
+  if (!list.length) { grid.innerHTML = '<div class="empty">沒有符合的影片</div>'; return; }
+  grid.innerHTML = list.map(v => {
+    const chars = charsText(v);
+    return '<div class="vcard" onclick="openDetail(\'' + v.id + '\')">' +
+      '<div class="vposter">' +
+      (v.p ? '<img src="' + v.p + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">' : '&#127916;') +
+      '<div class="vbadges">' +
+      (v.g ? '<span class="vbadge grade">' + esc(v.g) + '</span>' : '') +
+      (v.gpa ? '<span class="vbadge">' + v.gpa.toFixed(2) + '</span>' : '') +
+      (v.db ? '<span class="vbadge ' + dbClass(v.db) + '">' + esc(v.db) + '</span>' : '') +
+      '</div></div>' +
+      '<div class="vbody">' +
+      '<div class="vtitle">' + esc(v.t) + '</div>' +
+      '<div class="vmeta">' +
+      (v.cat ? '<span>' + esc(v.cat) + '</span>' : '') +
+      (v.yr ? '<span class="dot">·</span><span>' + v.yr + '</span>' : '') +
+      (v.loc ? '<span class="dot">·</span><span>' + esc(v.loc) + '</span>' : '') +
+      (v.res ? '<span class="dot">·</span><span>' + esc(v.res) + '</span>' : '') +
+      '</div>' +
+      (chars ? '<div class="vchars">' + esc(chars) + '</div>' : '') +
+      '</div></div>';
+  }).join('');
+}
+$('#searchInput').addEventListener('input', e => {
+  state.q = e.target.value;
+  renderVideos();
+});
+
+// ===== Detail =====
+function openDetail(id) {
+  const v = state.videos.find(x => x.id === id);
+  if (!v) return;
+  const parts = [];
+  parts.push('<div class="det-hero">' +
+    '<div class="det-poster">' + (v.p ? '<img src="' + v.p + '" alt="">' : '&#127916;') + '</div>' +
+    '<div class="det-info">' +
+    '<div class="det-title">' + esc(v.t) + '</div>' +
+    (v.t2 || v.ot ? '<div class="det-sub">' + esc(v.t2 || '') + (v.t2 && v.ot ? ' ／ ' : '') + esc(v.ot || '') + '</div>' : '') +
+    '<div class="det-badges">' +
+    (v.g ? '<span class="vbadge grade">' + esc(v.g) + '</span>' : '') +
+    (v.gpa ? '<span class="vbadge" style="background:rgba(88,166,255,.85)">GPA ' + v.gpa.toFixed(2) + '</span>' : '') +
+    (v.db ? '<span class="vbadge ' + dbClass(v.db) + '">DB: ' + esc(v.db) + '</span>' : '') +
+    '</div>' +
+    '<div class="vmeta">' + [v.cat, v.sub, v.type, v.sea, v.yr, v.loc, v.lang].filter(Boolean).join(' · ') + '</div>' +
+    '</div></div>');
+  const kv = [
+    ['分類', v.cat], ['類型', v.type], ['季', v.sea], ['年份', v.yr], ['地區', v.loc], ['語言', v.lang],
+    ['畫質', v.res], ['字幕', v.subs], ['集數/片長', v.ep], ['分鐘', v.min], ['製作商', v.prod], ['發行商', v.dist],
+    ['導演/監製', v.dir], ['劇本', v.scr], ['原作', v.orig], ['原作媒體', v.om], ['原作總章節', v.oc],
+    ['當前總集數', v.cur], ['主線完成佔比', v.pct != null ? (v.pct * 100).toFixed(0) + '%' : ''], ['GB', v.gb],
+    ['Progress', v.prog], ['系列', (v.ser || []).join('、')]
+  ].filter(r => r[1] != null && r[1] !== '' && r[1] !== 0);
+  parts.push('<div class="det-sec"><h3>基本資料</h3><div class="det-grid">' +
+    kv.map(r => '<div class="k">' + esc(r[0]) + '</div><div class="v">' + esc(r[1]) + '</div>').join('') +
+    '</div></div>');
+  if (v.chars && v.chars.length) {
+    parts.push('<div class="det-sec"><h3>角色與演員／聲優</h3>' +
+      v.chars.map(c =>
+        '<div class="char-row"><div><span class="char-name">' + esc(c.n) + '</span>' +
+        (c.r ? '<span class="char-role">' + esc(c.r) + '</span>' : '') + '</div>' +
+        '<div class="char-actors">' + esc((c.a || []).map(a => a.n + (a.t ? '（' + a.t + '）' : '')).join('、') || '—') + '</div></div>'
+      ).join('') + '</div>');
+  }
+  if (v.yt || v.off) {
+    parts.push('<div class="det-sec"><h3>連結</h3><div class="det-links">' +
+      (v.yt ? '<a href="' + esc(mdUrl(v.yt)) + '" target="_blank" rel="noopener">YouTube</a>' : '') +
+      (v.off ? '<a href="' + esc(mdUrl(v.off)) + '" target="_blank" rel="noopener">Official Links</a>' : '') +
+      '</div></div>');
+  }
+  $('#detailBody').innerHTML = parts.join('');
+  $('#detailOverlay').classList.add('open');
+}
+$('#closeDetail').addEventListener('click', () => $('#detailOverlay').classList.remove('open'));
+$('#detailOverlay').addEventListener('click', e => { if (e.target === $('#detailOverlay')) $('#detailOverlay').classList.remove('open'); });
+
+// ===== Downloads =====
+function stClass(st) {
+  return st === '進行中' ? 'st-doing' : st === '已完成' ? 'st-done' : 'st-drop';
+}
+function mdUrl(s) {
+  const m = String(s == null ? '' : s).match(/\(([^)]+)\)\s*$/);
+  return m ? m[1] : s;
+}
+function renderDl() {
+  const list = state.downloads;
+  $('#dlMeta').textContent = '下載中 ' + list.length + ' 部動畫';
+  const box = $('#dlList');
+  if (!list.length) { box.innerHTML = '<div class="empty">沒有下載記錄</div>'; return; }
+  box.innerHTML = list.map(d => {
+    const pct = d.pct != null ? Math.min(100, Math.max(0, Math.round(d.pct * 100))) : 0;
+    const need = d.need || d.ep;
+    return '<div class="dl-card">' +
+      '<div class="dl-poster">' + (d.p ? '<img src="' + d.p + '" alt="">' : '&#127916;') + '</div>' +
+      '<div class="dl-body">' +
+      '<div class="dl-top"><span class="dl-name">' + esc(d.n) + '</span>' +
+      (d.tier ? '<span class="dl-tier ' + ('tier' + String(d.tier).replace(/[^0-9]/g, '') || '1') + '">' + esc(d.tier) + '</span>' : '') +
+      (d.st ? '<span class="dl-st ' + stClass(d.st) + '">' + esc(d.st) + '</span>' : '') +
+      '</div>' +
+      '<div class="dl-bar"><div class="dl-bar-fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="dl-stat"><span>' + pct + '%</span><span>' + esc(d.ep || '') + ' / ' + esc(d.total || d.need || '?') + ' 集</span><span>' + esc(d.cycle || '') + '</span></div>' +
+      (d.note ? '<div class="dl-note">' + esc(d.note) + '</div>' : '') +
+      '<div class="dl-links">' +
+      ((d.bt && mdUrl(d.bt).indexOf('http') === 0) ? '<a href="' + esc(mdUrl(d.bt)) + '" target="_blank" rel="noopener">BT</a>' : '') +
+      ((d.direct && mdUrl(d.direct).indexOf('http') === 0) ? '<a href="' + esc(mdUrl(d.direct)) + '" target="_blank" rel="noopener">直接連結</a>' : '') +
+      (d.plat ? '<span style="font-size:11px;color:#8b949e;margin-left:auto">' + esc(d.plat) + '</span>' : '') +
+      '</div></div></div>';
+  }).join('');
+}
+
+// ===== News =====
+function buildNewsFilter() {
+  const plats = {};
+  state.news.forEach(a => { if (a.platform) plats[a.platform] = (plats[a.platform] || 0) + 1; });
+  const bar = $('#newsFilter');
+  bar.innerHTML = '';
+  const all = document.createElement('button');
+  all.className = 'filter-btn active';
+  all.textContent = '全部 (' + state.news.length + ')';
+  all.onclick = () => { state.ncat = ''; resetNews(all); renderNews(); };
+  bar.appendChild(all);
+  Object.keys(plats).forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'filter-btn';
+    b.textContent = p + ' (' + plats[p] + ')';
+    b.onclick = () => { state.ncat = p; resetNews(b); renderNews(); };
+    bar.appendChild(b);
+  });
+}
+function resetNews(active) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  active.classList.add('active');
+}
+function renderNews() {
+  if (!state.news.length) { $('#newsList').innerHTML = '<div class="empty">暫無新聞</div>'; return; }
+  if (!document.querySelectorAll('.filter-btn').length) buildNewsFilter();
+  const list = state.ncat ? state.news.filter(a => a.platform === state.ncat) : state.news;
+  $('#newsList').innerHTML = list.map(a =>
+    '<a class="news-card" href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
+    '<div class="news-thumb">' + (a.img ? '<img src="' + esc(a.img) + '" loading="lazy" alt="" onerror="this.style.display=\'none\'">' : '&#128240;') + '</div>' +
+    '<div class="news-body">' +
+    '<div class="news-title">' + esc(a.title) + '</div>' +
+    '<div class="news-meta">' + (a.platform ? '<span class="news-badge">' + esc(a.platform) + '</span>' : '') +
+    '<span>' + esc(a.date) + '</span>' + (a.push ? '<span>' + a.push + ' 推</span>' : '') + '</div>' +
+    (a.summary ? '<div class="news-sum">' + esc(a.summary) + '</div>' : '') +
+    '</div></a>').join('');
+}
+</script>
