@@ -391,6 +391,26 @@ body {
     <div class="filter-bar" id="newsFilter"></div>
     <div class="news-list" id="newsList"></div>
   </div>
+
+  <!-- ===== 頁面 4：Watching (NAS Movie Stream) ===== -->
+  <div class="page" id="page-watch">
+    <div id="watchProgressSummary" style="margin-bottom:12px;"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+      <button onclick="watchUp()" style="padding:6px 12px;background:#21262d;border:1px solid #30363d;border-radius:8px;color:#e6edf3;cursor:pointer;font-family:inherit;font-size:13px;">&#8617; 上層</button>
+      <div id="watchBreadcrumb" style="flex:1;font-size:13px;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+    </div>
+    <div id="watchList" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+</div>
+
+<!-- Video Player Overlay -->
+<div class="overlay" id="playerOverlay" style="z-index:500;">
+  <div class="overlay-head">
+    <button class="close-btn" onclick="closePlayer()">&times;</button>
+    <span id="playerTitle" style="font-size:14px;color:#e6edf3;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+    <button id="markWatchedBtn" onclick="markCurrentWatched()" style="display:none;padding:6px 14px;border-radius:8px;border:1px solid #3fb950;background:rgba(63,185,80,0.2);color:#3fb950;cursor:pointer;font-size:13px;font-family:inherit;white-space:nowrap;">&#10003; 睇完這集</button>
+  </div>
+  <video id="playerVideo" controls crossorigin="anonymous" style="width:100%;border-radius:12px;background:#000;max-height:70vh;"></video>
 </div>
 
 <div class="overlay" id="detailOverlay">
@@ -402,14 +422,15 @@ body {
 </div>
 
 <nav class="bottom-tabs">
-  <button class="bottom-tab active" data-tab="search"><span class="tab-icon">&#128269;</span>搜尋</button>
+  <button class="bottom-tab" data-tab="watch"><span class="tab-icon">&#127916;</span>Watching</button>
   <button class="bottom-tab" data-tab="dl"><span class="tab-icon">&#11015;&#65039;</span>下載中</button>
   <button class="bottom-tab" data-tab="news"><span class="tab-icon">&#128240;</span>新聞</button>
+  <button class="bottom-tab active" data-tab="search"><span class="tab-icon">&#128269;</span>搜尋</button>
 </nav>
 
 <script>
 // ===== 數據載入 =====
-const state = { videos: [], downloads: [], news: [], cat: '', q: '', ncat: '' };
+const state = { videos: [], downloads: [], news: [], cat: '', q: '', ncat: '', progress: [], nasAll: [] };
 const $ = (s) => document.querySelector(s);
 
 function loadJSON(url) {
@@ -437,8 +458,9 @@ document.querySelectorAll('.bottom-tab').forEach(btn => {
     btn.classList.add('active');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     $('#page-' + btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'dl') renderDl();
+    if (btn.dataset.tab === 'dl') loadDlExtras();
     if (btn.dataset.tab === 'news') renderNews();
+    if (btn.dataset.tab === 'watch') { if (!state.progress.length) loadDlExtras(); loadWatch(''); }
   });
 });
 
@@ -577,14 +599,44 @@ function mdUrl(s) {
   const m = String(s == null ? '' : s).match(/\(([^)]+)\)\s*$/);
   return m ? m[1] : s;
 }
+
+// Load progress from Feishu + scan NAS matches
+function loadDlExtras() {
+  Promise.all([
+    fetch(PROXY + '/progress').then(r => r.json()).catch(() => ({records:[]})),
+    fetch(PROXY + '/nas-find?name=').then(r => r.json()).catch(() => ({matches:[]}))
+  ]).then(([prog, nas]) => {
+    state.progress = prog.records || [];
+    state.nasAll = nas.matches || [];
+    renderDl();
+    // Refresh watch summary if currently on watch tab at root
+    if (!watchPath) renderWatchSummary();
+  });
+}
+
+function findProgress(name) {
+  return state.progress.find(p => p.name && name.includes(p.name)) || null;
+}
+function findNas(name) {
+  if (!state.nasAll) return null;
+  const n = name.toLowerCase();
+  return state.nasAll.find(f => {
+    const fn = f.name.toLowerCase();
+    return n.includes(fn) || fn.includes(n);
+  }) || null;
+}
+
 function renderDl() {
   const list = state.downloads;
   $('#dlMeta').textContent = '下載中 ' + list.length + ' 部動畫';
   const box = $('#dlList');
   if (!list.length) { box.innerHTML = '<div class="empty">沒有下載記錄</div>'; return; }
-  box.innerHTML = list.map(d => {
+  box.innerHTML = list.map((d, idx) => {
     const pct = d.pct != null ? Math.min(100, Math.max(0, Math.round(d.pct * 100))) : 0;
-    const need = d.need || d.ep;
+    const prog = findProgress(d.n);
+    const nas = findNas(d.n);
+    const watched = prog ? parseInt(prog.progress) || 0 : 0;
+    const totalEp = parseInt(d.ep) || prog?.downloaded || 0;
     return '<div class="dl-card">' +
       '<div class="dl-poster">' + (d.p ? '<img src="' + d.p + '" alt="">' : '&#127916;') + '</div>' +
       '<div class="dl-body">' +
@@ -595,12 +647,35 @@ function renderDl() {
       '<div class="dl-bar"><div class="dl-bar-fill" style="width:' + pct + '%"></div></div>' +
       '<div class="dl-stat"><span>' + pct + '%</span><span>' + esc(d.ep || '') + ' / ' + esc(d.total || d.need || '?') + ' 集</span><span>' + esc(d.cycle || '') + '</span></div>' +
       (d.note ? '<div class="dl-note">' + esc(d.note) + '</div>' : '') +
+      (prog ? '<div style="font-size:12px;color:#3fb950;margin-top:2px;">&#128065; 已看 ' + watched + ' / ' + totalEp + ' 集</div>' : '') +
       '<div class="dl-links">' +
       ((d.bt && mdUrl(d.bt).indexOf('http') === 0) ? '<a href="' + esc(mdUrl(d.bt)) + '" target="_blank" rel="noopener">BT</a>' : '') +
       ((d.direct && mdUrl(d.direct).indexOf('http') === 0) ? '<a href="' + esc(mdUrl(d.direct)) + '" target="_blank" rel="noopener">直接連結</a>' : '') +
+      (nas ? '<button onclick="goWatch(\'' + esc(nas.path) + '\')" style="padding:3px 10px;border-radius:8px;border:1px solid #3fb950;background:rgba(63,185,80,0.15);color:#3fb950;cursor:pointer;font-size:11px;font-family:inherit;">&#9654; 追看</button>' : '') +
       (d.plat ? '<span style="font-size:11px;color:#8b949e;margin-left:auto">' + esc(d.plat) + '</span>' : '') +
       '</div></div></div>';
   }).join('');
+}
+
+function goWatch(nasPath) {
+  // Manually switch tabs without triggering loadWatch('')
+  document.querySelectorAll('.bottom-tab').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-tab="watch"]').classList.add('active');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  $('#page-watch').classList.add('active');
+  if (!state.progress.length) loadDlExtras();
+  loadWatch(nasPath);
+}
+
+function toggleWatched(recordId, oldVal, newVal) {
+  if (newVal < 0) newVal = 0;
+  fetch(PROXY + '/progress-update?record_id=' + encodeURIComponent(recordId) + '&progress=' + newVal)
+    .then(r => r.json())
+    .then(() => {
+      const rec = state.progress.find(p => p.record_id === recordId);
+      if (rec) rec.progress = String(newVal);
+      renderDl();
+    });
 }
 
 // ===== News =====
@@ -640,4 +715,322 @@ function renderNews() {
     (a.summary ? '<div class="news-sum">' + esc(a.summary) + '</div>' : '') +
     '</div></a>').join('');
 }
+
+// ===== Watching (NAS Movie Stream) =====
+const PROXY = 'http://127.0.0.1:8790';
+let watchPath = '';
+let watchLoaded = false;
+
+function fmtSize(bytes) {
+  if (bytes > 1073741824) return (bytes/1073741824).toFixed(1) + ' GB';
+  if (bytes > 1048576) return (bytes/1048576).toFixed(0) + ' MB';
+  return (bytes/1024).toFixed(0) + ' KB';
+}
+
+// Render 4-color stacked progress bars for active anime
+function renderWatchSummary() {
+  if (!state.progress.length) { $('#watchProgressSummary').innerHTML = ''; return; }
+  const active = state.progress.filter(p => {
+    const st = p.status || [];
+    if (!st.length) return true;
+    return !st.includes('已完成') && !st.includes('已放棄');
+  }).filter(p => p.total && p.total > 0);
+
+  if (!active.length) { $('#watchProgressSummary').innerHTML = ''; return; }
+
+  const colors = { watch: '#3fb950', dl: '#58a6ff', rel: '#d29922', src: '#6e7681' };
+  let html = '<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:12px;margin-bottom:4px;">';
+  html += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;color:#e6edf3;">追番進度</div>';
+  // Legend
+  html += '<div style="display:flex;gap:12px;font-size:11px;color:#8b949e;margin-bottom:10px;flex-wrap:wrap;">';
+  html += '<span><span style="display:inline-block;width:10px;height:10px;background:'+colors.watch+';border-radius:2px;margin-right:4px;"></span>追看至</span>';
+  html += '<span><span style="display:inline-block;width:10px;height:10px;background:'+colors.dl+';border-radius:2px;margin-right:4px;"></span>下載至</span>';
+  html += '<span><span style="display:inline-block;width:10px;height:10px;background:'+colors.rel+';border-radius:2px;margin-right:4px;"></span>推出至</span>';
+  html += '<span><span style="display:inline-block;width:10px;height:10px;background:'+colors.src+';border-radius:2px;margin-right:4px;"></span>原著總數</span>';
+  html += '</div>';
+
+  active.forEach(p => {
+    const total = p.total || 1;
+    const watched = parseInt(p.progress) || 0;
+    const downloaded = p.downloaded || 0;
+    const released = p.latest || 0;
+    const wPct = Math.min(watched / total * 100, 100);
+    const dPct = Math.min(downloaded / total * 100, 100);
+    const rPct = Math.min(released / total * 100, 100);
+    // Find matching NAS folder
+    const nasMatch = state.nasAll.find(f => {
+      const fn = f.name.toLowerCase();
+      const pn = (p.name||'').toLowerCase();
+      return pn && (fn.includes(pn) || pn.includes(fn));
+    });
+    const clickHandler = nasMatch ? `onclick="loadWatch('${esc(nasMatch.path.replace('Main Operation Centre/Operation Movie/',''))}')"` : '';
+    html += '<div '+clickHandler+' style="margin-bottom:8px;cursor:'+(nasMatch?'pointer':'default')+';">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:#8b949e;margin-bottom:3px;">';
+    html += '<span style="color:#e6edf3;font-weight:600;">' + esc(p.name || '?') + (nasMatch?' <span style="color:#58a6ff;font-size:10px;">&#8250;</span>':'') + '</span>';
+    html += '<span>' + watched + ' / ' + downloaded + ' / ' + released + ' / ' + total + '</span>';
+    html += '</div>';
+    // Overlapping layered bar: gray bg (full), orange (released), blue (downloaded), green (watched)
+    html += '<div style="position:relative;height:14px;border-radius:4px;background:'+colors.src+';opacity:0.3;overflow:hidden;">';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:'+rPct+'%;background:'+colors.rel+';opacity:0.8;"></div>';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:'+dPct+'%;background:'+colors.dl+';opacity:0.8;"></div>';
+    html += '<div style="position:absolute;left:0;top:0;height:100%;width:'+wPct+'%;background:'+colors.watch+';"></div>';
+    html += '</div></div>';
+  });
+  html += '</div>';
+  $('#watchProgressSummary').innerHTML = html;
+}
+
+function loadWatch(sub) {
+  watchPath = sub || '';
+  $('#watchBreadcrumb').textContent = 'Operation Movie' + (sub ? ' / ' + sub : '');
+  // Show progress summary only at root level
+  if (!sub) { renderWatchSummary(); }
+  $('#watchProgressSummary').style.display = sub ? 'none' : 'block';
+  $('#watchList').innerHTML = '<div class="empty">載入中…</div>';
+  fetch(PROXY + '/list?path=' + encodeURIComponent(watchPath))
+    .then(r => r.json())
+    .then(d => {
+      watchLoaded = true;
+      if (!d.entries || !d.entries.length) {
+        $('#watchList').innerHTML = '<div class="empty">此資料夾為空</div>';
+        return;
+      }
+      $('#watchList').innerHTML = d.entries.map(e => {
+        if (e.is_dir) {
+          return '<div onclick="loadWatch(\'' + esc(e.path.replace('Main Operation Centre/Operation Movie/','')) + '\')" ' +
+            'style="display:flex;align-items:center;gap:10px;padding:12px;background:#161b22;border:1px solid #30363d;border-radius:12px;cursor:pointer;">' +
+            '<span style="font-size:24px;">&#128193;</span>' +
+            '<span style="flex:1;font-size:14px;font-weight:600;">' + esc(e.name) + '</span>' +
+            '<span style="color:#484f58;font-size:16px;">&#8250;</span></div>';
+        }
+        if (e.name.toLowerCase().endsWith('.srt')) return '';
+        return '<div onclick="playVideo(\'' + esc(e.path) + '\',\'' + esc(e.name) + '\')" ' +
+          'style="display:flex;align-items:center;gap:10px;padding:12px;background:#161b22;border:1px solid #30363d;border-radius:12px;cursor:pointer;">' +
+          '<span style="font-size:24px;">&#127916;</span>' +
+          '<span style="flex:1;font-size:13px;line-height:1.3;">' + esc(e.name) + '</span>' +
+          '<span style="font-size:11px;color:#8b949e;">' + fmtSize(e.size) + '</span>' +
+          '<span style="color:#58a6ff;font-size:16px;">&#9654;</span></div>';
+      }).join('');
+    })
+    .catch(e => {
+      $('#watchList').innerHTML = '<div class="empty" style="color:#f85149;">無法連接 NAS proxy<br>請先執行: python video_proxy.py<br><small>' + esc(String(e)) + '</small></div>';
+    });
+}
+
+function watchUp() {
+  if (!watchPath) return;
+  const parts = watchPath.split('/');
+  parts.pop();
+  loadWatch(parts.join('/'));
+}
+
+function playVideo(path, name) {
+  $('#playerTitle').textContent = name;
+  const v = $('#playerVideo');
+  v.querySelectorAll('track').forEach(t => t.remove());
+  v.crossOrigin = 'anonymous';
+  v.src = PROXY + '/proxy?path=' + encodeURIComponent(path);
+  // Try matching SRT
+  const srtPath = path.replace(/\.(mp4|mkv)$/i, '.srt');
+  const track = document.createElement('track');
+  track.kind = 'subtitles';
+  track.label = '中文';
+  track.srclang = 'zh';
+  track.onload = function() {
+    if (v.textTracks.length > 0) v.textTracks[0].mode = 'showing';
+  };
+  track.src = PROXY + '/proxy?path=' + encodeURIComponent(srtPath);
+  v.appendChild(track);
+  $('#playerOverlay').classList.add('open');
+  v.load();
+  v.play().catch(() => {});
+  setTimeout(() => { if (v.textTracks.length > 0) v.textTracks[0].mode = 'showing'; }, 500);
+
+  // === Video gestures: double-click left/right = ±10s, drag = seek ===
+  let lastClick = 0, lastClickX = 0;
+  let dragStartX = 0, dragStartTime = 0, dragging = false;
+
+  // Mouse double-click (desktop)
+  v.addEventListener('dblclick', function(e) {
+    const rect = v.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (x > rect.width * 0.6) { v.currentTime += 10; flashSeek('+10s'); }
+    else if (x < rect.width * 0.4) { v.currentTime -= 10; flashSeek('-10s'); }
+  });
+
+  // Touch gestures (mobile)
+  v.ontouchend = function(e) {
+    const now = Date.now();
+    const touch = e.changedTouches[0];
+    const rect = v.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    if (now - lastClick < 300 && Math.abs(x - lastClickX) < 50) {
+      if (x > rect.width * 0.6) { v.currentTime += 10; flashSeek('+10s'); }
+      else if (x < rect.width * 0.4) { v.currentTime -= 10; flashSeek('-10s'); }
+      lastClick = 0;
+    } else {
+      lastClick = now; lastClickX = x;
+    }
+  };
+  v.ontouchstart = function(e) {
+    const touch = e.touches[0];
+    const rect = v.getBoundingClientRect();
+    dragStartX = touch.clientX - rect.left;
+    dragStartTime = v.currentTime;
+    dragging = true;
+  };
+  v.ontouchmove = function(e) {
+    if (!dragging) return;
+    const touch = e.touches[0];
+    const rect = v.getBoundingClientRect();
+    const dx = (touch.clientX - rect.left) - dragStartX;
+    if (v.duration) {
+      v.currentTime = Math.max(0, Math.min(v.duration, dragStartTime + dx * 0.6));
+      showSeekPreview(v.currentTime, v.duration);
+    }
+  };
+  v.ontouchend = function() { dragging = false; hideSeekPreview(); };
+
+  // Mouse drag (desktop)
+  v.onmousedown = function(e) {
+    if (e.target !== v) return;
+    const rect = v.getBoundingClientRect();
+    dragStartX = e.clientX - rect.left;
+    dragStartTime = v.currentTime;
+    dragging = true;
+  };
+  window.onmousemove = function(e) {
+    if (!dragging) return;
+    const rect = v.getBoundingClientRect();
+    const dx = e.clientX - rect.left - dragStartX;
+    if (v.duration) {
+      v.currentTime = Math.max(0, Math.min(v.duration, dragStartTime + dx * 0.6));
+      showSeekPreview(v.currentTime, v.duration);
+    }
+  };
+  window.onmouseup = function() { if (dragging) { dragging = false; hideSeekPreview(); } };
+
+  // Flash overlay for seek feedback
+  function flashSeek(txt) {
+    let el = document.getElementById('seekFlash');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'seekFlash';
+      el.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.7);color:#fff;padding:10px 20px;border-radius:8px;font-size:18px;font-weight:700;z-index:600;pointer-events:none;';
+      $('#playerOverlay').appendChild(el);
+    }
+    el.textContent = txt;
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.style.display = 'none', 600);
+  }
+  function showSeekPreview(cur, dur) {
+    let el = document.getElementById('seekFlash');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'seekFlash';
+      el.style.cssText = 'position:absolute;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#fff;padding:6px 14px;border-radius:8px;font-size:14px;z-index:600;pointer-events:none;';
+      $('#playerOverlay').appendChild(el);
+    }
+    const m = Math.floor(cur/60), s = Math.floor(cur%60);
+    el.textContent = m + ':' + (s<10?'0':'') + s + ' / ' + Math.floor(dur/60) + ':' + (Math.floor(dur%60)<10?'0':'') + Math.floor(dur%60);
+    el.style.display = 'block';
+  }
+  function hideSeekPreview() {
+    const el = document.getElementById('seekFlash');
+    if (el) { clearTimeout(el._t); el._t = setTimeout(() => el.style.display='none', 400); }
+  }
+
+  // Extract episode number from filename - skip years (19xx/20xx)
+  let epNum = null;
+  const patterns = [
+    /\[(\d{1,4})\]/,           // [192]
+    /EP\s*(\d{1,4})/i,         // EP192
+    /第(\d{1,4})[话話集]/,      // 第192话
+    /^(\d{1,3})[-_]/,           // 192-...
+  ];
+  for (const re of patterns) {
+    const m = name.match(re);
+    if (m) {
+      const n = parseInt(m[1]);
+      if (n < 1900 || n > 2100) { epNum = n; break; }
+    }
+  }
+
+  // Find matching progress record
+  const doMatch = () => {
+    const folderName = watchPath.split('/').pop();
+    let match = state.progress.find(p => p.name && (
+      folderName.includes(p.name) || p.name.includes(folderName)
+    ));
+    if (!match) {
+      match = state.progress.find(p => p.name && name.includes(p.name));
+    }
+    const btn = $('#markWatchedBtn');
+    state.currentEp = epNum;
+    if (match && epNum) {
+      state.currentRec = match;
+      btn.style.display = 'inline-block';
+      btn.style.background = 'rgba(255,179,0,0.15)';
+      btn.style.borderColor = '#ffb300';
+      btn.style.color = '#ffb300';
+      btn.textContent = '✓ 標記已看 E' + epNum;
+    } else if (match && !epNum) {
+      state.currentRec = match;
+      btn.style.display = 'inline-block';
+      btn.style.background = 'rgba(255,179,0,0.15)';
+      btn.style.borderColor = '#ffb300';
+      btn.style.color = '#ffb300';
+      btn.textContent = '✓ 標記已看';
+    } else {
+      state.currentRec = null;
+      btn.style.display = 'none';
+    }
+  };
+  if (!state.progress.length) {
+    fetch(PROXY + '/progress').then(r => r.json()).then(d => {
+      state.progress = d.records || [];
+      doMatch();
+    });
+  } else {
+    doMatch();
+  }
+}
+
+function markCurrentWatched() {
+  if (!state.currentRec || !state.currentEp) return;
+  const ep = state.currentEp;
+  const btn = $('#markWatchedBtn');
+  btn.textContent = '...';
+  fetch(PROXY + '/progress-update?record_id=' + encodeURIComponent(state.currentRec.record_id) + '&progress=' + ep)
+    .then(r => r.json())
+    .then(res => {
+      if (res.ok) {
+        state.currentRec.progress = String(ep);
+        btn.style.background = 'rgba(63,185,80,0.15)';
+        btn.style.borderColor = '#3fb950';
+        btn.style.color = '#3fb950';
+        btn.textContent = '✓ 已看到 E' + ep;
+      } else {
+        btn.style.background = 'rgba(248,81,73,0.15)';
+        btn.style.borderColor = '#f85149';
+        btn.style.color = '#f85149';
+        btn.textContent = '✗ 失敗，再試';
+      }
+    })
+    .catch(() => {
+      btn.style.background = 'rgba(248,81,73,0.15)';
+      btn.style.borderColor = '#f85149';
+      btn.style.color = '#f85149';
+      btn.textContent = '✗ 失敗，再試';
+    });
+}
+
+function closePlayer() {
+  const v = $('#playerVideo');
+  v.pause();
+  v.src = '';
+  $('#playerOverlay').classList.remove('open');
+}
 </script>
+
