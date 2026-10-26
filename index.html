@@ -32,7 +32,6 @@ body {
   -webkit-text-fill-color: transparent;
 }
 .header-sub { font-size: 12px; color: #8b949e; }
-/* 底部 TAB（手機 FOOTER 模式） */
 .bottom-tabs {
   position: fixed;
   bottom: 0;
@@ -166,7 +165,6 @@ body {
 .vgpa { font-size: 13px; font-weight: 700; color: #58a6ff; }
 .vchars { font-size: 11px; color: #8b949e; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .empty { text-align: center; color: #8b949e; padding: 40px 0; font-size: 14px; }
-/* Detail overlay */
 .overlay {
   position: fixed;
   inset: 0;
@@ -243,7 +241,6 @@ body {
   text-decoration: none;
   word-break: break-all;
 }
-/* Downloads */
 .dl-card {
   background: #161b22;
   border: 1px solid #30363d;
@@ -310,7 +307,6 @@ body {
 .st-doing { background: rgba(88, 166, 255, 0.18); color: #58a6ff; }
 .st-done { background: rgba(63, 185, 80, 0.18); color: #3fb950; }
 .st-drop { background: rgba(139, 148, 158, 0.18); color: #8b949e; }
-/* News */
 .filter-bar { display: flex; gap: 6px; padding: 0 0 12px; overflow-x: auto; flex-wrap: wrap; }
 .filter-btn {
   padding: 5px 12px;
@@ -369,7 +365,6 @@ body {
 </header>
 
 <div class="content">
-  <!-- ===== 頁面 1：Video Search ===== -->
   <div class="page active" id="page-search">
     <div class="search-box">
       <svg viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -380,19 +375,16 @@ body {
     <div class="vgrid" id="vgrid"></div>
   </div>
 
-  <!-- ===== 頁面 2：下載進度 ===== -->
   <div class="page" id="page-dl">
     <div class="result-meta" id="dlMeta"></div>
     <div id="dlList"></div>
   </div>
 
-  <!-- ===== 頁面 3：J11 新聞 ===== -->
   <div class="page" id="page-news">
     <div class="filter-bar" id="newsFilter"></div>
     <div class="news-list" id="newsList"></div>
   </div>
 
-  <!-- ===== 頁面 4：Watching (NAS Movie Stream) ===== -->
   <div class="page" id="page-watch">
     <div id="watchProgressSummary" style="margin-bottom:12px;"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
@@ -403,7 +395,6 @@ body {
   </div>
 </div>
 
-<!-- Video Player Overlay -->
 <div class="overlay" id="playerOverlay" style="z-index:500;">
   <div class="overlay-head">
     <button class="close-btn" onclick="closePlayer()">&times;</button>
@@ -429,7 +420,6 @@ body {
 </nav>
 
 <script>
-// ===== 數據載入 =====
 const state = { videos: [], downloads: [], news: [], cat: '', q: '', ncat: '', progress: [], nasAll: [] };
 const $ = (s) => document.querySelector(s);
 
@@ -451,7 +441,6 @@ Promise.all([loadJSON('videos.json'), loadJSON('downloads.json'), loadJSON('news
   $('#vgrid').innerHTML = '<div class="empty">無法載入數據（請確認 JSON 已部署）</div>';
 });
 
-// ===== Tab 切換 =====
 document.querySelectorAll('.bottom-tab').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.bottom-tab').forEach(b => b.classList.remove('active'));
@@ -464,7 +453,6 @@ document.querySelectorAll('.bottom-tab').forEach(btn => {
   });
 });
 
-// ===== Video Search =====
 const CATS = ['Animation', 'Drama', 'Movie', 'Advertisement', 'Information'];
 function buildCats() {
   const counts = {};
@@ -544,7 +532,6 @@ $('#searchInput').addEventListener('input', e => {
   renderVideos();
 });
 
-// ===== Detail =====
 function openDetail(id) {
   const v = state.videos.find(x => x.id === id);
   if (!v) return;
@@ -591,7 +578,6 @@ function openDetail(id) {
 $('#closeDetail').addEventListener('click', () => $('#detailOverlay').classList.remove('open'));
 $('#detailOverlay').addEventListener('click', e => { if (e.target === $('#detailOverlay')) $('#detailOverlay').classList.remove('open'); });
 
-// ===== Downloads =====
 function stClass(st) {
   return st === '進行中' ? 'st-doing' : st === '已完成' ? 'st-done' : 'st-drop';
 }
@@ -600,7 +586,6 @@ function mdUrl(s) {
   return m ? m[1] : s;
 }
 
-// Load progress from Feishu + scan NAS matches
 function loadDlExtras() {
   Promise.all([
     fetch(PROXY + '/progress').then(r => r.json()).catch(() => ({records:[]})),
@@ -609,7 +594,6 @@ function loadDlExtras() {
     state.progress = prog.records || [];
     state.nasAll = nas.matches || [];
     renderDl();
-    // Refresh watch summary if currently on watch tab at root
     if (!watchPath) renderWatchSummary();
   });
 }
@@ -658,7 +642,6 @@ function renderDl() {
 }
 
 function goWatch(nasPath) {
-  // Manually switch tabs without triggering loadWatch('')
   document.querySelectorAll('.bottom-tab').forEach(b => b.classList.remove('active'));
   document.querySelector('[data-tab="watch"]').classList.add('active');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -678,7 +661,6 @@ function toggleWatched(recordId, oldVal, newVal) {
     });
 }
 
-// ===== News =====
 function buildNewsFilter() {
   const plats = {};
   state.news.forEach(a => { if (a.platform) plats[a.platform] = (plats[a.platform] || 0) + 1; });
@@ -716,15 +698,12 @@ function renderNews() {
     '</div></a>').join('');
 }
 
-// ===== Watching (NAS Movie Stream) =====
-// Auto-detect proxy: localhost dev → local python proxy; production → Cloudflare Worker
 const PROXY = (() => {
   const stored = localStorage.getItem('j11_proxy');
   if (stored) return stored.replace(/\/$/, '');
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return 'http://127.0.0.1:8790';
-  return 'https://j11-proxy.hkharrycheng.workers.dev'; // Cloudflare Worker default
+  return 'https://j11-proxy.hkharrycheng.workers.dev';
 })();
-// Worker now supports /progress and /progress-update directly via Feishu app credentials.
 let watchPath = '';
 let watchLoaded = false;
 
@@ -734,13 +713,12 @@ function fmtSize(bytes) {
   return (bytes/1024).toFixed(0) + ' KB';
 }
 
-// Render 4-color stacked progress bars for active anime
 function renderWatchSummary() {
   if (!state.progress.length) { $('#watchProgressSummary').innerHTML = ''; return; }
   const active = state.progress.filter(p => {
     const st = p.status || [];
     if (!st.length) return true;
-    return !st.includes('已完成') && !st.includes('已放棄');
+    return !st.includes('己完成') && !st.includes('己放棄') && !st.includes('已完成') && !st.includes('已放棄');
   }).filter(p => p.total && p.total > 0);
 
   if (!active.length) { $('#watchProgressSummary').innerHTML = ''; return; }
@@ -748,7 +726,6 @@ function renderWatchSummary() {
   const colors = { watch: '#3fb950', dl: '#58a6ff', rel: '#d29922', src: '#6e7681' };
   let html = '<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:12px;margin-bottom:4px;">';
   html += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;color:#e6edf3;">追番進度</div>';
-  // Legend
   html += '<div style="display:flex;gap:12px;font-size:11px;color:#8b949e;margin-bottom:10px;flex-wrap:wrap;">';
   html += '<span><span style="display:inline-block;width:10px;height:10px;background:'+colors.watch+';border-radius:2px;margin-right:4px;"></span>追看至</span>';
   html += '<span><span style="display:inline-block;width:10px;height:10px;background:'+colors.dl+';border-radius:2px;margin-right:4px;"></span>下載至</span>';
@@ -764,7 +741,6 @@ function renderWatchSummary() {
     const wPct = Math.min(watched / total * 100, 100);
     const dPct = Math.min(downloaded / total * 100, 100);
     const rPct = Math.min(released / total * 100, 100);
-    // Find matching NAS folder
     const nasMatch = state.nasAll.find(f => {
       const fn = f.name.toLowerCase();
       const pn = (p.name||'').toLowerCase();
@@ -776,7 +752,6 @@ function renderWatchSummary() {
     html += '<span style="color:#e6edf3;font-weight:600;">' + esc(p.name || '?') + (nasMatch?' <span style="color:#58a6ff;font-size:10px;">&#8250;</span>':'') + '</span>';
     html += '<span>' + watched + ' / ' + downloaded + ' / ' + released + ' / ' + total + '</span>';
     html += '</div>';
-    // Overlapping layered bar: gray bg (full), orange (released), blue (downloaded), green (watched)
     html += '<div style="position:relative;height:14px;border-radius:4px;background:'+colors.src+';opacity:0.3;overflow:hidden;">';
     html += '<div style="position:absolute;left:0;top:0;height:100%;width:'+rPct+'%;background:'+colors.rel+';opacity:0.8;"></div>';
     html += '<div style="position:absolute;left:0;top:0;height:100%;width:'+dPct+'%;background:'+colors.dl+';opacity:0.8;"></div>';
@@ -790,7 +765,6 @@ function renderWatchSummary() {
 function loadWatch(sub) {
   watchPath = sub || '';
   $('#watchBreadcrumb').textContent = 'Operation Movie' + (sub ? ' / ' + sub : '');
-  // Show progress summary only at root level
   if (!sub) { renderWatchSummary(); }
   $('#watchProgressSummary').style.display = sub ? 'none' : 'block';
   $('#watchList').innerHTML = '<div class="empty">載入中…</div>';
@@ -837,7 +811,6 @@ function playVideo(path, name) {
   v.querySelectorAll('track').forEach(t => t.remove());
   v.crossOrigin = 'anonymous';
   v.src = PROXY + '/proxy?path=' + encodeURIComponent(path);
-  // Try matching SRT
   const srtPath = path.replace(/\.(mp4|mkv)$/i, '.srt');
   const track = document.createElement('track');
   track.kind = 'subtitles';
@@ -853,11 +826,9 @@ function playVideo(path, name) {
   v.play().catch(() => {});
   setTimeout(() => { if (v.textTracks.length > 0) v.textTracks[0].mode = 'showing'; }, 500);
 
-  // === Video gestures: double-click left/right = ±10s, drag = seek ===
   let lastClick = 0, lastClickX = 0;
   let dragStartX = 0, dragStartTime = 0, dragging = false;
 
-  // Mouse double-click (desktop)
   v.addEventListener('dblclick', function(e) {
     const rect = v.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -865,7 +836,6 @@ function playVideo(path, name) {
     else if (x < rect.width * 0.4) { v.currentTime -= 10; flashSeek('-10s'); }
   });
 
-  // Touch gestures (mobile)
   v.ontouchend = function(e) {
     const now = Date.now();
     const touch = e.changedTouches[0];
@@ -898,9 +868,8 @@ function playVideo(path, name) {
   };
   v.ontouchend = function() { dragging = false; hideSeekPreview(); };
 
-  // Mouse drag (desktop)
   v.onmousedown = function(e) {
-    if (e.target !== v) return; // don't interfere with native controls
+    if (e.target !== v) return;
     const rect = v.getBoundingClientRect();
     dragStartX = e.clientX - rect.left;
     dragStartTime = v.currentTime;
@@ -917,7 +886,6 @@ function playVideo(path, name) {
   };
   window.onmouseup = function() { if (dragging) { dragging = false; hideSeekPreview(); } };
 
-  // Flash overlay for seek feedback
   function flashSeek(txt) {
     let el = document.getElementById('seekFlash');
     if (!el) {
@@ -948,31 +916,28 @@ function playVideo(path, name) {
     if (el) { clearTimeout(el._t); el._t = setTimeout(() => el.style.display='none', 400); }
   }
 
-  // Extract episode number from filename - skip years (19xx/20xx)
   let epNum = null;
   const patterns = [
-    /總第\s*(\d{1,4})/,         // [總第75] — overall episode number (preferred)
-    /\[(\d{1,4})\]/,           // [192]
-    /EP\s*(\d{1,4})/i,         // EP192
-    /第(\d{1,4})[话話集]/,      // 第192话
-    /[Ss]?\d+[a-zA-Z]*\s*[-_]\s*(\d{1,4})/, // S04 - 09 / 4th - 09
-    /^(\d{1,3})[-_]/,           // 192-...
+    /總第\s*(\d{1,4})/,
+    /\[(\d{1,4})\]/,
+    /EP\s*(\d{1,4})/i,
+    /第(\d{1,4})[话話集]/,
+    /[Ss]\d+\s*[-_]\s*(\d{1,4})/,
+    /^(\d{1,3})[-_]/
   ];
   for (const re of patterns) {
     const m = name.match(re);
     if (m) {
       const n = parseInt(m[1]);
-      if (n < 1900 || n > 2100) { epNum = n; break; }  // skip years
+      if (n < 1900 || n > 2100) { epNum = n; break; }
     }
   }
 
-  // Find matching progress record
   const doMatch = () => {
     const folderName = watchPath.split('/').pop();
     let match = state.progress.find(p => p.name && (
       folderName.includes(p.name) || p.name.includes(folderName)
     ));
-    // Fallback: try matching by filename keywords
     if (!match) {
       match = state.progress.find(p => p.name && name.includes(p.name));
     }
@@ -986,7 +951,6 @@ function playVideo(path, name) {
       btn.style.color = '#ffb300';
       btn.textContent = '✓ 標記已看 E' + epNum;
     } else if (match && !epNum) {
-      // No ep number found, still show button for manual
       state.currentRec = match;
       btn.style.display = 'inline-block';
       btn.style.background = 'rgba(255,179,0,0.15)';
@@ -1045,6 +1009,3 @@ function closePlayer() {
   $('#playerOverlay').classList.remove('open');
 }
 </script>
-
-</body>
-</html>
