@@ -609,6 +609,7 @@ function loadDlExtras() {
     state.progress = prog.records || [];
     state.nasAll = nas.matches || [];
     renderDl();
+    // Refresh watch summary if currently on watch tab at root
     if (!watchPath) renderWatchSummary();
   });
 }
@@ -657,6 +658,7 @@ function renderDl() {
 }
 
 function goWatch(nasPath) {
+  // Manually switch tabs without triggering loadWatch('')
   document.querySelectorAll('.bottom-tab').forEach(b => b.classList.remove('active'));
   document.querySelector('[data-tab="watch"]').classList.add('active');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -722,8 +724,7 @@ const PROXY = (() => {
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return 'http://127.0.0.1:8790';
   return 'https://j11-proxy.hkharrycheng.workers.dev'; // Cloudflare Worker default
 })();
-// Note: /progress and /progress-update require the local python proxy (lark-cli).
-// On external network via Worker, those calls will fail gracefully (no progress bar).
+// Worker now supports /progress and /progress-update directly via Feishu app credentials.
 let watchPath = '';
 let watchLoaded = false;
 
@@ -747,6 +748,7 @@ function renderWatchSummary() {
   const colors = { watch: '#3fb950', dl: '#58a6ff', rel: '#d29922', src: '#6e7681' };
   let html = '<div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:12px;margin-bottom:4px;">';
   html += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;color:#e6edf3;">追番進度</div>';
+  // Legend
   html += '<div style="display:flex;gap:12px;font-size:11px;color:#8b949e;margin-bottom:10px;flex-wrap:wrap;">';
   html += '<span><span style="display:inline-block;width:10px;height:10px;background:'+colors.watch+';border-radius:2px;margin-right:4px;"></span>追看至</span>';
   html += '<span><span style="display:inline-block;width:10px;height:10px;background:'+colors.dl+';border-radius:2px;margin-right:4px;"></span>下載至</span>';
@@ -762,6 +764,7 @@ function renderWatchSummary() {
     const wPct = Math.min(watched / total * 100, 100);
     const dPct = Math.min(downloaded / total * 100, 100);
     const rPct = Math.min(released / total * 100, 100);
+    // Find matching NAS folder
     const nasMatch = state.nasAll.find(f => {
       const fn = f.name.toLowerCase();
       const pn = (p.name||'').toLowerCase();
@@ -773,6 +776,7 @@ function renderWatchSummary() {
     html += '<span style="color:#e6edf3;font-weight:600;">' + esc(p.name || '?') + (nasMatch?' <span style="color:#58a6ff;font-size:10px;">&#8250;</span>':'') + '</span>';
     html += '<span>' + watched + ' / ' + downloaded + ' / ' + released + ' / ' + total + '</span>';
     html += '</div>';
+    // Overlapping layered bar: gray bg (full), orange (released), blue (downloaded), green (watched)
     html += '<div style="position:relative;height:14px;border-radius:4px;background:'+colors.src+';opacity:0.3;overflow:hidden;">';
     html += '<div style="position:absolute;left:0;top:0;height:100%;width:'+rPct+'%;background:'+colors.rel+';opacity:0.8;"></div>';
     html += '<div style="position:absolute;left:0;top:0;height:100%;width:'+dPct+'%;background:'+colors.dl+';opacity:0.8;"></div>';
@@ -786,6 +790,7 @@ function renderWatchSummary() {
 function loadWatch(sub) {
   watchPath = sub || '';
   $('#watchBreadcrumb').textContent = 'Operation Movie' + (sub ? ' / ' + sub : '');
+  // Show progress summary only at root level
   if (!sub) { renderWatchSummary(); }
   $('#watchProgressSummary').style.display = sub ? 'none' : 'block';
   $('#watchList').innerHTML = '<div class="empty">載入中…</div>';
@@ -832,6 +837,7 @@ function playVideo(path, name) {
   v.querySelectorAll('track').forEach(t => t.remove());
   v.crossOrigin = 'anonymous';
   v.src = PROXY + '/proxy?path=' + encodeURIComponent(path);
+  // Try matching SRT
   const srtPath = path.replace(/\.(mp4|mkv)$/i, '.srt');
   const track = document.createElement('track');
   track.kind = 'subtitles';
@@ -847,9 +853,11 @@ function playVideo(path, name) {
   v.play().catch(() => {});
   setTimeout(() => { if (v.textTracks.length > 0) v.textTracks[0].mode = 'showing'; }, 500);
 
+  // === Video gestures: double-click left/right = ±10s, drag = seek ===
   let lastClick = 0, lastClickX = 0;
   let dragStartX = 0, dragStartTime = 0, dragging = false;
 
+  // Mouse double-click (desktop)
   v.addEventListener('dblclick', function(e) {
     const rect = v.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -857,6 +865,7 @@ function playVideo(path, name) {
     else if (x < rect.width * 0.4) { v.currentTime -= 10; flashSeek('-10s'); }
   });
 
+  // Touch gestures (mobile)
   v.ontouchend = function(e) {
     const now = Date.now();
     const touch = e.changedTouches[0];
@@ -889,8 +898,9 @@ function playVideo(path, name) {
   };
   v.ontouchend = function() { dragging = false; hideSeekPreview(); };
 
+  // Mouse drag (desktop)
   v.onmousedown = function(e) {
-    if (e.target !== v) return;
+    if (e.target !== v) return; // don't interfere with native controls
     const rect = v.getBoundingClientRect();
     dragStartX = e.clientX - rect.left;
     dragStartTime = v.currentTime;
@@ -907,6 +917,7 @@ function playVideo(path, name) {
   };
   window.onmouseup = function() { if (dragging) { dragging = false; hideSeekPreview(); } };
 
+  // Flash overlay for seek feedback
   function flashSeek(txt) {
     let el = document.getElementById('seekFlash');
     if (!el) {
@@ -937,26 +948,31 @@ function playVideo(path, name) {
     if (el) { clearTimeout(el._t); el._t = setTimeout(() => el.style.display='none', 400); }
   }
 
+  // Extract episode number from filename - skip years (19xx/20xx)
   let epNum = null;
   const patterns = [
-    /\[(\d{1,4})\]/,
-    /EP\s*(\d{1,4})/i,
-    /第(\d{1,4})[话話集]/,
-    /^(\d{1,3})[-_]/,
+    /總第\s*(\d{1,4})/,         // [總第75] — overall episode number (preferred)
+    /\[(\d{1,4})\]/,           // [192]
+    /EP\s*(\d{1,4})/i,         // EP192
+    /第(\d{1,4})[话話集]/,      // 第192话
+    /[Ss]?\d+[a-zA-Z]*\s*[-_]\s*(\d{1,4})/, // S04 - 09 / 4th - 09
+    /^(\d{1,3})[-_]/,           // 192-...
   ];
   for (const re of patterns) {
     const m = name.match(re);
     if (m) {
       const n = parseInt(m[1]);
-      if (n < 1900 || n > 2100) { epNum = n; break; }
+      if (n < 1900 || n > 2100) { epNum = n; break; }  // skip years
     }
   }
 
+  // Find matching progress record
   const doMatch = () => {
     const folderName = watchPath.split('/').pop();
     let match = state.progress.find(p => p.name && (
       folderName.includes(p.name) || p.name.includes(folderName)
     ));
+    // Fallback: try matching by filename keywords
     if (!match) {
       match = state.progress.find(p => p.name && name.includes(p.name));
     }
@@ -970,6 +986,7 @@ function playVideo(path, name) {
       btn.style.color = '#ffb300';
       btn.textContent = '✓ 標記已看 E' + epNum;
     } else if (match && !epNum) {
+      // No ep number found, still show button for manual
       state.currentRec = match;
       btn.style.display = 'inline-block';
       btn.style.background = 'rgba(255,179,0,0.15)';
@@ -992,8 +1009,9 @@ function playVideo(path, name) {
 }
 
 function markCurrentWatched() {
-  if (!state.currentRec || !state.currentEp) return;
+  if (!state.currentRec) return;
   const ep = state.currentEp;
+  if (!ep) { alert('未能從檔名解析集數，請手動在飛書更新'); return; }
   const btn = $('#markWatchedBtn');
   btn.textContent = '...';
   fetch(PROXY + '/progress-update?record_id=' + encodeURIComponent(state.currentRec.record_id) + '&progress=' + ep)
@@ -1027,3 +1045,6 @@ function closePlayer() {
   $('#playerOverlay').classList.remove('open');
 }
 </script>
+
+</body>
+</html>
